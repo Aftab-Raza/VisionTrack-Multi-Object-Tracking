@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Input videos
+videos/*
+!videos/.gitkeep
+
+# Generated outputs
+outputs/*
+!outputs/.gitkeep
+
+# Large ML model files
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.weights
+
+# Temporary files
+*.tmp
+*.temp
