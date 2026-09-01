@@ -14,6 +14,7 @@ VisionTrack is a real-time multi-object detection and tracking system built usin
 * Object movement analytics
 * Extendable architecture for speed estimation, object counting, and zone monitoring
 
+
 ## Tech Stack
 
 * Python

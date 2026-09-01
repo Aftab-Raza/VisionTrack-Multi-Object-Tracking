@@ -1,5 +1,10 @@
 import cv2
+import numpy as np
 
+
+# ==========================================
+# Object Bounding Box
+# ==========================================
 
 def draw_object(
     frame,
@@ -49,7 +54,10 @@ def draw_object(
         label,
         (
             x1,
-            max(20, y1 - 10)
+            max(
+                20,
+                y1 - 10
+            )
         ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.55,
@@ -57,6 +65,10 @@ def draw_object(
         2
     )
 
+
+# ==========================================
+# Trajectory
+# ==========================================
 
 def draw_trajectory(
     frame,
@@ -81,6 +93,9 @@ def draw_trajectory(
         )
 
 
+# ==========================================
+# Counting Line
+# ==========================================
 
 def draw_counting_line(
     frame,
@@ -88,6 +103,7 @@ def draw_counting_line(
 ):
 
     height, width = frame.shape[:2]
+
 
     cv2.line(
         frame,
@@ -97,16 +113,27 @@ def draw_counting_line(
         2
     )
 
+
     cv2.putText(
         frame,
         "COUNTING LINE",
-        (20, line_y - 12),
+        (
+            20,
+            max(
+                20,
+                line_y - 12
+            )
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
         (0, 255, 255),
         2
     )
 
+
+# ==========================================
+# Main Statistics
+# ==========================================
 
 def draw_statistics(
     frame,
@@ -126,6 +153,7 @@ def draw_statistics(
         2
     )
 
+
     cv2.putText(
         frame,
         f"IN: {total_in}",
@@ -135,6 +163,7 @@ def draw_statistics(
         (255, 255, 255),
         2
     )
+
 
     cv2.putText(
         frame,
@@ -146,6 +175,7 @@ def draw_statistics(
         2
     )
 
+
     cv2.putText(
         frame,
         f"FPS: {fps:.1f}",
@@ -155,3 +185,186 @@ def draw_statistics(
         (255, 255, 255),
         2
     )
+
+
+# ==========================================
+# Polygon Zone
+# ==========================================
+
+def draw_zone(
+    frame,
+    zone_name,
+    polygon,
+    entries=0,
+    exits=0
+):
+
+    polygon_array = np.array(
+        polygon,
+        dtype=np.int32
+    )
+
+    polygon_array = polygon_array.reshape(
+        (-1, 1, 2)
+    )
+
+
+    cv2.polylines(
+        frame,
+        [polygon_array],
+        True,
+        (255, 255, 0),
+        2
+    )
+
+
+    if len(polygon) > 0:
+
+        label_x = polygon[0][0]
+
+        label_y = max(
+            25,
+            polygon[0][1] - 10
+        )
+
+
+        label = (
+            f"{zone_name} "
+            f"E:{entries} "
+            f"X:{exits}"
+        )
+
+
+        cv2.putText(
+            frame,
+            label,
+            (
+                label_x,
+                label_y
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 0),
+            2
+        )
+
+
+# ==========================================
+# Object Zone Status
+# ==========================================
+
+def draw_zone_status(
+    frame,
+    centroid,
+    zone_name,
+    dwell_time
+):
+
+    cx, cy = centroid
+
+
+    text = (
+        f"{zone_name}: "
+        f"{dwell_time:.1f}s"
+    )
+
+
+    cv2.putText(
+        frame,
+        text,
+        (
+            cx + 10,
+            cy + 25
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 255, 255),
+        2
+    )
+
+
+# ==========================================
+# Recent Event History
+# ==========================================
+
+def draw_event_history(
+    frame,
+    events
+):
+
+    height, width = frame.shape[:2]
+
+    x = max(
+        20,
+        width - 390
+    )
+
+    y = 35
+
+
+    cv2.putText(
+        frame,
+        "ZONE EVENTS",
+        (
+            x,
+            y
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (255, 255, 255),
+        2
+    )
+
+
+    y += 30
+
+
+    for event in events:
+
+        event_type = event[
+            "type"
+        ]
+
+        track_id = event[
+            "track_id"
+        ]
+
+        zone = event[
+            "zone"
+        ]
+
+
+        if event_type == "ZONE_ENTRY":
+
+            text = (
+                f"ID {track_id} ENTERED {zone}"
+            )
+
+        else:
+
+            dwell = event[
+                "dwell_time"
+            ]
+
+            text = (
+                f"ID {track_id} EXITED "
+                f"{zone} "
+                f"({dwell:.1f}s)"
+            )
+
+
+        cv2.putText(
+            frame,
+            text,
+            (
+                x,
+                y
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1
+        )
+
+
+        y += 24
