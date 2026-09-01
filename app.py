@@ -14,6 +14,7 @@ from analytics.zone_monitor import ZoneMonitor
 from storage.event_logger import EventLogger
 from storage.snapshot_manager import SnapshotManager
 from storage.video_recorder import VideoRecorder
+from storage.database import DatabaseManager
 
 from utils.drawing import (
     draw_object,
@@ -37,7 +38,6 @@ def get_stream_timestamp(
     live_start_time
 ):
 
-    # Live webcam
     if isinstance(
         source,
         int
@@ -50,7 +50,6 @@ def get_stream_timestamp(
         )
 
 
-    # Recorded video
     if (
         source_fps is not None
         and
@@ -64,7 +63,6 @@ def get_stream_timestamp(
         )
 
 
-    # Fallback
     return (
         time.monotonic()
         -
@@ -73,7 +71,7 @@ def get_stream_timestamp(
 
 
 # ==========================================
-# Standard Event Structure
+# Standard Event Object
 # ==========================================
 
 def build_event(
@@ -141,654 +139,760 @@ def build_event(
 
 def main():
 
-    # --------------------------------------
-    # Core modules
-    # --------------------------------------
-
     video = VideoSource(
         config.VIDEO_SOURCE
     )
 
-    tracker = (
-        MultiObjectTracker()
-    )
+    tracker = MultiObjectTracker()
 
-    trajectories = (
-        TrajectoryManager()
-    )
+    trajectories = TrajectoryManager()
 
-    line_counter = (
-        LineCounter()
-    )
+    line_counter = LineCounter()
 
-    zone_monitor = (
-        ZoneMonitor()
-    )
+    zone_monitor = ZoneMonitor()
 
 
-    # --------------------------------------
-    # Persistence modules
-    # --------------------------------------
+    # ======================================
+    # Persistence
+    # ======================================
 
-    event_logger = (
-        EventLogger()
-    )
+    event_logger = EventLogger()
 
-    snapshot_manager = (
-        SnapshotManager()
-    )
+    snapshot_manager = SnapshotManager()
 
-    video_recorder = (
-        VideoRecorder()
-    )
+    video_recorder = VideoRecorder()
+
+    database = DatabaseManager()
 
 
-    # --------------------------------------
-    # Open video source
-    # --------------------------------------
+    source_fps = None
 
-    video.open()
+    session_id = None
 
+    frame_index = 0
 
-    source_fps = (
-        video.get_fps()
-    )
+    recorder_initialized = False
 
+    previous_time = time.time()
 
     live_start_time = (
         time.monotonic()
     )
 
 
-    previous_time = (
-        time.time()
-    )
+    try:
 
+        # ==================================
+        # Open source
+        # ==================================
 
-    frame_index = 0
+        video.open()
 
-    recorder_initialized = False
-
-
-    # ======================================
-    # Main processing loop
-    # ======================================
-
-    while True:
-
-        success, frame = (
-            video.read()
+        source_fps = (
+            video.get_fps()
         )
 
 
-        if not success:
-            break
+        # ==================================
+        # Main loop
+        # ==================================
 
+        while True:
 
-        frame_index += 1
-
-
-        frame_height = (
-            frame.shape[0]
-        )
-
-        frame_width = (
-            frame.shape[1]
-        )
-
-
-        # ----------------------------------
-        # Initialize output recorder
-        # ----------------------------------
-
-        if not recorder_initialized:
-
-            video_recorder.open(
-                frame_width=
-                    frame_width,
-
-                frame_height=
-                    frame_height,
-
-                fps=
-                    source_fps
+            success, frame = (
+                video.read()
             )
 
-            recorder_initialized = True
+            if not success:
+                break
 
 
-        # ----------------------------------
-        # Stream timestamp
-        # ----------------------------------
+            frame_index += 1
 
-        timestamp = (
-            get_stream_timestamp(
-                frame_index,
-                source_fps,
-                config.VIDEO_SOURCE,
-                live_start_time
+
+            frame_height = (
+                frame.shape[0]
             )
-        )
+
+            frame_width = (
+                frame.shape[1]
+            )
 
 
-        # ----------------------------------
-        # Draw zones
-        # ----------------------------------
+            # ==============================
+            # Initialize session on first frame
+            # ==============================
 
-        for zone_name in config.ZONES:
+            if session_id is None:
 
-            polygon = (
-                zone_monitor
-                .get_pixel_polygon(
+                session_id = (
+                    database.start_session(
+                        source=
+                            config.VIDEO_SOURCE,
+
+                        source_fps=
+                            source_fps,
+
+                        frame_width=
+                            frame_width,
+
+                        frame_height=
+                            frame_height
+                    )
+                )
+
+
+                print(
+                    f"[SESSION STARTED] "
+                    f"Session ID: "
+                    f"{session_id}"
+                )
+
+
+            # ==============================
+            # Video recorder
+            # ==============================
+
+            if not recorder_initialized:
+
+                video_recorder.open(
+                    frame_width=
+                        frame_width,
+
+                    frame_height=
+                        frame_height,
+
+                    fps=
+                        source_fps
+                )
+
+                recorder_initialized = True
+
+
+            # ==============================
+            # Timestamp
+            # ==============================
+
+            timestamp = (
+                get_stream_timestamp(
+                    frame_index,
+                    source_fps,
+                    config.VIDEO_SOURCE,
+                    live_start_time
+                )
+            )
+
+
+            # ==============================
+            # Draw zones
+            # ==============================
+
+            for zone_name in config.ZONES:
+
+                polygon = (
+                    zone_monitor
+                    .get_pixel_polygon(
+                        zone_name,
+                        frame_width,
+                        frame_height
+                    )
+                )
+
+
+                zone_counts = (
+                    zone_monitor
+                    .get_zone_counts(
+                        zone_name
+                    )
+                )
+
+
+                draw_zone(
+                    frame,
                     zone_name,
-                    frame_width,
-                    frame_height
+                    polygon,
+                    entries=
+                        zone_counts[
+                            "entries"
+                        ],
+                    exits=
+                        zone_counts[
+                            "exits"
+                        ]
                 )
+
+
+            # ==============================
+            # Multi Object Tracking
+            # ==============================
+
+            objects = tracker.track(
+                frame
             )
 
 
-            zone_counts = (
-                zone_monitor
-                .get_zone_counts(
-                    zone_name
-                )
-            )
+            active_ids = set()
 
 
-            draw_zone(
-                frame,
-                zone_name,
-                polygon,
-                entries=
-                    zone_counts[
-                        "entries"
-                    ],
-                exits=
-                    zone_counts[
-                        "exits"
-                    ]
-            )
+            # ==============================
+            # Process Tracks
+            # ==============================
 
+            for obj in objects:
 
-        # ----------------------------------
-        # MOT
-        # ----------------------------------
-
-        objects = tracker.track(
-            frame
-        )
-
-
-        active_ids = set()
-
-
-        # ==================================
-        # Process each object
-        # ==================================
-
-        for obj in objects:
-
-            track_id = (
-                obj[
+                track_id = obj[
                     "track_id"
                 ]
-            )
 
-            centroid = (
-                obj[
+                centroid = obj[
                     "centroid"
                 ]
-            )
 
 
-            active_ids.add(
-                track_id
-            )
-
-
-            # ------------------------------
-            # Trajectory
-            # ------------------------------
-
-            trajectories.update(
-                track_id,
-                centroid
-            )
-
-
-            direction = (
-                trajectories
-                .get_direction(
+                active_ids.add(
                     track_id
                 )
-            )
 
 
-            points = (
-                trajectories
-                .get_trajectory(
-                    track_id
+                # --------------------------
+                # Save/update track in DB
+                # --------------------------
+
+                database.upsert_track(
+                    session_id=
+                        session_id,
+
+                    obj=
+                        obj,
+
+                    frame_index=
+                        frame_index,
+
+                    timestamp=
+                        timestamp
                 )
-            )
 
 
-            # ------------------------------
-            # Line crossing
-            # ------------------------------
+                # --------------------------
+                # Trajectory
+                # --------------------------
 
-            line_event = (
-                line_counter.update(
+                trajectories.update(
+                    track_id,
+                    centroid
+                )
+
+
+                direction = (
+                    trajectories
+                    .get_direction(
+                        track_id
+                    )
+                )
+
+
+                points = (
+                    trajectories
+                    .get_trajectory(
+                        track_id
+                    )
+                )
+
+
+                # --------------------------
+                # Line crossing
+                # --------------------------
+
+                line_event = (
+                    line_counter.update(
+                        track_id=
+                            track_id,
+
+                        centroid=
+                            centroid,
+
+                        frame_index=
+                            frame_index,
+
+                        frame_height=
+                            frame_height
+                    )
+                )
+
+
+                # --------------------------
+                # Zones
+                # --------------------------
+
+                (
+                    zone_events,
+                    zone_status
+                ) = zone_monitor.update(
+
                     track_id=
                         track_id,
 
                     centroid=
                         centroid,
 
+                    timestamp=
+                        timestamp,
+
                     frame_index=
                         frame_index,
+
+                    frame_width=
+                        frame_width,
 
                     frame_height=
                         frame_height
                 )
-            )
 
 
-            # ------------------------------
-            # Zone monitoring
-            # ------------------------------
+                # ==========================
+                # Drawing
+                # ==========================
 
-            (
-                zone_events,
-                zone_status
-            ) = zone_monitor.update(
-
-                track_id=
-                    track_id,
-
-                centroid=
-                    centroid,
-
-                timestamp=
-                    timestamp,
-
-                frame_index=
-                    frame_index,
-
-                frame_width=
-                    frame_width,
-
-                frame_height=
-                    frame_height
-            )
+                draw_trajectory(
+                    frame,
+                    points
+                )
 
 
-            # ------------------------------
-            # Draw tracking information
-            # ------------------------------
-
-            draw_trajectory(
-                frame,
-                points
-            )
+                draw_object(
+                    frame,
+                    obj,
+                    direction
+                )
 
 
-            draw_object(
-                frame,
-                obj,
-                direction
-            )
+                for (
+                    zone_name,
+                    status
+                ) in zone_status.items():
+
+                    if status[
+                        "inside"
+                    ]:
+
+                        draw_zone_status(
+                            frame,
+                            centroid,
+                            zone_name,
+                            status[
+                                "dwell_time"
+                            ]
+                        )
 
 
-            # ------------------------------
-            # Current dwell time
-            # ------------------------------
+                # ==========================
+                # LINE EVENT
+                # ==========================
 
-            for (
-                zone_name,
-                status
-            ) in zone_status.items():
+                if line_event is not None:
 
-                if status[
-                    "inside"
-                ]:
+                    event_type = (
+                        f"LINE_{line_event}"
+                    )
 
-                    draw_zone_status(
+
+                    event = build_event(
+                        event_type=
+                            event_type,
+
+                        obj=
+                            obj,
+
+                        frame_index=
+                            frame_index,
+
+                        timestamp=
+                            timestamp,
+
+                        direction=
+                            direction
+                    )
+
+
+                    # ----------------------
+                    # Snapshot
+                    # ----------------------
+
+                    snapshot_path = (
+                        snapshot_manager.save(
+                            frame=
+                                frame,
+
+                            event_type=
+                                event_type,
+
+                            track_id=
+                                track_id,
+
+                            frame_index=
+                                frame_index
+                        )
+                    )
+
+
+                    # ----------------------
+                    # CSV
+                    # ----------------------
+
+                    event_logger.log(
+                        event
+                    )
+
+
+                    # ----------------------
+                    # SQLite
+                    # ----------------------
+
+                    database.log_event(
+                        session_id=
+                            session_id,
+
+                        event=
+                            event,
+
+                        snapshot_path=
+                            snapshot_path
+                    )
+
+
+                    print(
+                        f"[{event_type}] "
+                        f"ID {track_id}"
+                    )
+
+
+                    x1, y1, _, _ = (
+                        obj[
+                            "bbox"
+                        ]
+                    )
+
+
+                    cv2.putText(
                         frame,
-                        centroid,
-                        zone_name,
-                        status[
+                        f"CROSSED: "
+                        f"{line_event}",
+                        (
+                            x1,
+                            max(
+                                40,
+                                y1 - 35
+                            )
+                        ),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 0, 255),
+                        2
+                    )
+
+
+                # ==========================
+                # ZONE EVENTS
+                # ==========================
+
+                for zone_event in zone_events:
+
+                    event_type = (
+                        zone_event[
+                            "type"
+                        ]
+                    )
+
+                    zone_name = (
+                        zone_event[
+                            "zone"
+                        ]
+                    )
+
+                    dwell_time = (
+                        zone_event[
                             "dwell_time"
                         ]
                     )
 
 
-            # ==============================
-            # LINE EVENT
-            # ==============================
+                    event = build_event(
+                        event_type=
+                            event_type,
 
-            if line_event is not None:
+                        obj=
+                            obj,
 
-                event_type = (
-                    f"LINE_{line_event}"
-                )
+                        frame_index=
+                            frame_index,
 
+                        timestamp=
+                            timestamp,
 
-                event = build_event(
-                    event_type=
-                        event_type,
+                        direction=
+                            direction,
 
-                    obj=
-                        obj,
+                        zone=
+                            zone_name,
 
-                    frame_index=
-                        frame_index,
-
-                    timestamp=
-                        timestamp,
-
-                    direction=
-                        direction
-                )
+                        dwell_time=
+                            dwell_time
+                    )
 
 
-                event_logger.log(
-                    event
-                )
+                    snapshot_path = (
+                        snapshot_manager.save(
+                            frame=
+                                frame,
 
+                            event_type=
+                                event_type,
 
-                snapshot_manager.save(
-                    frame=
-                        frame,
+                            track_id=
+                                track_id,
 
-                    event_type=
-                        event_type,
-
-                    track_id=
-                        track_id,
-
-                    frame_index=
-                        frame_index
-                )
-
-
-                print(
-                    f"[{event_type}] "
-                    f"ID {track_id} "
-                    f"{obj['class_name']} "
-                    f"at "
-                    f"{timestamp:.2f}s"
-                )
-
-
-                x1, y1, _, _ = (
-                    obj[
-                        "bbox"
-                    ]
-                )
-
-
-                cv2.putText(
-                    frame,
-                    f"CROSSED: "
-                    f"{line_event}",
-                    (
-                        x1,
-                        max(
-                            40,
-                            y1 - 35
+                            frame_index=
+                                frame_index
                         )
-                    ),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 0, 255),
-                    2
-                )
-
-
-            # ==============================
-            # ZONE EVENTS
-            # ==============================
-
-            for zone_event in zone_events:
-
-                event_type = (
-                    zone_event[
-                        "type"
-                    ]
-                )
-
-
-                zone_name = (
-                    zone_event[
-                        "zone"
-                    ]
-                )
-
-
-                dwell_time = (
-                    zone_event[
-                        "dwell_time"
-                    ]
-                )
-
-
-                event = build_event(
-                    event_type=
-                        event_type,
-
-                    obj=
-                        obj,
-
-                    frame_index=
-                        frame_index,
-
-                    timestamp=
-                        timestamp,
-
-                    direction=
-                        direction,
-
-                    zone=
-                        zone_name,
-
-                    dwell_time=
-                        dwell_time
-                )
-
-
-                event_logger.log(
-                    event
-                )
-
-
-                snapshot_manager.save(
-                    frame=
-                        frame,
-
-                    event_type=
-                        event_type,
-
-                    track_id=
-                        track_id,
-
-                    frame_index=
-                        frame_index
-                )
-
-
-                if (
-                    event_type
-                    ==
-                    "ZONE_ENTRY"
-                ):
-
-                    print(
-                        f"[ZONE ENTRY] "
-                        f"ID {track_id} "
-                        f"entered "
-                        f"{zone_name}"
                     )
 
 
-                elif (
-                    event_type
-                    ==
-                    "ZONE_EXIT"
-                ):
-
-                    print(
-                        f"[ZONE EXIT] "
-                        f"ID {track_id} "
-                        f"left "
-                        f"{zone_name} "
-                        f"after "
-                        f"{dwell_time:.2f}s"
+                    event_logger.log(
+                        event
                     )
 
 
-        # ==================================
-        # Cleanup old track state
-        # ==================================
+                    database.log_event(
+                        session_id=
+                            session_id,
 
-        line_counter.cleanup(
-            frame_index
-        )
+                        event=
+                            event,
 
-
-        zone_monitor.cleanup(
-            frame_index
-        )
+                        snapshot_path=
+                            snapshot_path
+                    )
 
 
-        # ==================================
-        # FPS
-        # ==================================
+                    if (
+                        event_type
+                        ==
+                        "ZONE_ENTRY"
+                    ):
 
-        current_time = (
-            time.time()
-        )
-
-
-        elapsed = (
-            current_time
-            -
-            previous_time
-        )
+                        print(
+                            f"[ZONE ENTRY] "
+                            f"ID {track_id} "
+                            f"entered "
+                            f"{zone_name}"
+                        )
 
 
-        fps = (
-            1 / elapsed
-            if elapsed > 0
-            else 0
-        )
+                    elif (
+                        event_type
+                        ==
+                        "ZONE_EXIT"
+                    ):
+
+                        print(
+                            f"[ZONE EXIT] "
+                            f"ID {track_id} "
+                            f"left "
+                            f"{zone_name} "
+                            f"after "
+                            f"{dwell_time:.2f}s"
+                        )
 
 
-        previous_time = (
-            current_time
-        )
+            # ==============================
+            # Cleanup
+            # ==============================
 
-
-        # ==================================
-        # Counting line
-        # ==================================
-
-        line_y = (
-            line_counter
-            .get_line_y(
-                frame_height
+            line_counter.cleanup(
+                frame_index
             )
-        )
 
 
-        draw_counting_line(
-            frame,
-            line_y
-        )
+            zone_monitor.cleanup(
+                frame_index
+            )
 
 
-        # ==================================
-        # Statistics
-        # ==================================
+            # ==============================
+            # Periodic DB commit
+            # ==============================
 
-        draw_statistics(
-            frame=
+            if (
+                frame_index
+                %
+                config.DB_COMMIT_INTERVAL_FRAMES
+                ==
+                0
+            ):
+
+                database.commit()
+
+
+            # ==============================
+            # FPS
+            # ==============================
+
+            current_time = time.time()
+
+
+            elapsed = (
+                current_time
+                -
+                previous_time
+            )
+
+
+            fps = (
+                1 / elapsed
+                if elapsed > 0
+                else 0
+            )
+
+
+            previous_time = (
+                current_time
+            )
+
+
+            # ==============================
+            # Counting line
+            # ==============================
+
+            line_y = (
+                line_counter
+                .get_line_y(
+                    frame_height
+                )
+            )
+
+
+            draw_counting_line(
                 frame,
-
-            active_objects=
-                len(
-                    active_ids
-                ),
-
-            total_in=
-                line_counter
-                .total_in,
-
-            total_out=
-                line_counter
-                .total_out,
-
-            fps=
-                fps
-        )
-
-
-        # ==================================
-        # Event history
-        # ==================================
-
-        recent_events = (
-            zone_monitor
-            .get_recent_events(
-                limit=6
+                line_y
             )
-        )
 
 
-        draw_event_history(
-            frame,
-            recent_events
-        )
+            # ==============================
+            # Statistics
+            # ==============================
+
+            draw_statistics(
+                frame=
+                    frame,
+
+                active_objects=
+                    len(
+                        active_ids
+                    ),
+
+                total_in=
+                    line_counter
+                    .total_in,
+
+                total_out=
+                    line_counter
+                    .total_out,
+
+                fps=
+                    fps
+            )
 
 
-        # ==================================
-        # Record processed frame
-        # ==================================
+            # ==============================
+            # Event History
+            # ==============================
 
-        video_recorder.write(
-            frame
-        )
-
-
-        # ==================================
-        # Display
-        # ==================================
-
-        cv2.imshow(
-            "VisionTrack - MOT Analytics",
-            frame
-        )
+            recent_events = (
+                zone_monitor
+                .get_recent_events(
+                    limit=6
+                )
+            )
 
 
-        key = (
-            cv2.waitKey(1)
-            &
-            0xFF
-        )
+            draw_event_history(
+                frame,
+                recent_events
+            )
 
 
-        if key == ord("q"):
-            break
+            # ==============================
+            # Record Video
+            # ==============================
+
+            video_recorder.write(
+                frame
+            )
+
+
+            # ==============================
+            # Display
+            # ==============================
+
+            cv2.imshow(
+                "VisionTrack - MOT Analytics",
+                frame
+            )
+
+
+            key = (
+                cv2.waitKey(1)
+                &
+                0xFF
+            )
+
+
+            if key == ord("q"):
+                break
 
 
     # ======================================
-    # Shutdown
+    # Always perform shutdown
     # ======================================
 
-    video.release()
+    finally:
 
-    video_recorder.release()
+        # Save pending database changes.
+        database.commit()
 
-    cv2.destroyAllWindows()
+
+        # Close session.
+        if session_id is not None:
+
+            database.end_session(
+                session_id=
+                    session_id,
+
+                total_frames=
+                    frame_index,
+
+                total_in=
+                    line_counter.total_in,
+
+                total_out=
+                    line_counter.total_out
+            )
+
+
+            print(
+                f"[SESSION ENDED] "
+                f"Session ID: "
+                f"{session_id}"
+            )
+
+
+        video.release()
+
+        video_recorder.release()
+
+        database.close()
+
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

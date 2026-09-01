@@ -44,3 +44,12 @@ models/*.weights
 # Temporary files
 *.tmp
 *.temp
+
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
+
+# Data directory runtime files
+data/*
+!data/.gitkeep

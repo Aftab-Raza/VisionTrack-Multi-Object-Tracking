@@ -103,3 +103,16 @@ OUTPUT_VIDEO_FILE = "outputs/visiontrack_output.mp4"
 
 # Used if source FPS cannot be determined
 OUTPUT_VIDEO_FPS_FALLBACK = 25.0
+
+
+# ==========================================
+# Database Configuration
+# ==========================================
+
+ENABLE_DATABASE = True
+
+DATABASE_PATH = "data/visiontrack.db"
+
+# Writing every frame directly to disk can
+# reduce FPS. Commit updates periodically.
+DB_COMMIT_INTERVAL_FRAMES = 30
