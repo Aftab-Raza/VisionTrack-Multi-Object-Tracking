@@ -1,3 +1,5 @@
+import math
+
 from pathlib import Path
 
 import cv2
@@ -40,6 +42,8 @@ class VideoRecorder:
         if (
             fps is None
             or
+            not math.isfinite(fps)
+            or
             fps <= 1
         ):
 
@@ -49,15 +53,23 @@ class VideoRecorder:
             )
 
 
-        fourcc = cv2.VideoWriter_fourcc(
-            *"mp4v"
+        fourcc = (
+            cv2.VideoWriter_fourcc(
+                *"mp4v"
+            )
         )
 
 
         self.writer = cv2.VideoWriter(
-            str(self.file_path),
+
+            str(
+                self.file_path
+            ),
+
             fourcc,
+
             fps,
+
             (
                 frame_width,
                 frame_height
@@ -68,12 +80,15 @@ class VideoRecorder:
         if not self.writer.isOpened():
 
             raise RuntimeError(
-                "Could not initialize "
-                "output video writer."
+                "Unable to initialize "
+                "output video recorder."
             )
 
 
-    def write(self, frame):
+    def write(
+        self,
+        frame
+    ):
 
         if (
             self.enabled
