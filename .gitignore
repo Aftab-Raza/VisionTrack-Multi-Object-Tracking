@@ -20,8 +20,12 @@ env/
 Thumbs.db
 
 # Logs
-logs/
-*.log
+logs/*
+!logs/.gitkeep
+
+# Generated outputs
+outputs/*
+!outputs/.gitkeep
 
 # Input videos
 videos/*

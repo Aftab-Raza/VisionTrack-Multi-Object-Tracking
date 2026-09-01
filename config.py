@@ -76,3 +76,30 @@ ZONE_TRACK_MAX_AGE = 150
 # Maximum recent zone events stored in memory.
 
 ZONE_EVENT_HISTORY_LIMIT = 50
+
+
+# ==========================================
+# Persistence Configuration
+# ==========================================
+
+# CSV event logging
+ENABLE_CSV_LOGGING = True
+
+EVENT_LOG_FILE = "logs/events.csv"
+
+
+# Event snapshots
+ENABLE_EVENT_SNAPSHOTS = True
+
+SNAPSHOT_DIRECTORY = "outputs/snapshots"
+
+SNAPSHOT_JPEG_QUALITY = 90
+
+
+# Processed video recording
+ENABLE_VIDEO_RECORDING = True
+
+OUTPUT_VIDEO_FILE = "outputs/visiontrack_output.mp4"
+
+# Used if source FPS cannot be determined
+OUTPUT_VIDEO_FPS_FALLBACK = 25.0

@@ -11,6 +11,10 @@ from analytics.trajectory import TrajectoryManager
 from analytics.line_counter import LineCounter
 from analytics.zone_monitor import ZoneMonitor
 
+from storage.event_logger import EventLogger
+from storage.snapshot_manager import SnapshotManager
+from storage.video_recorder import VideoRecorder
+
 from utils.drawing import (
     draw_object,
     draw_trajectory,
@@ -22,6 +26,10 @@ from utils.drawing import (
 )
 
 
+# ==========================================
+# Stream Timestamp
+# ==========================================
+
 def get_stream_timestamp(
     frame_index,
     source_fps,
@@ -29,7 +37,7 @@ def get_stream_timestamp(
     live_start_time
 ):
 
-    # Webcam / local live camera
+    # Live webcam
     if isinstance(
         source,
         int
@@ -64,44 +72,154 @@ def get_stream_timestamp(
     )
 
 
+# ==========================================
+# Standard Event Structure
+# ==========================================
+
+def build_event(
+    event_type,
+    obj,
+    frame_index,
+    timestamp,
+    direction,
+    zone="",
+    dwell_time=0.0
+):
+
+    cx, cy = obj[
+        "centroid"
+    ]
+
+
+    return {
+
+        "frame_index":
+            frame_index,
+
+        "timestamp_seconds":
+            round(
+                timestamp,
+                3
+            ),
+
+        "event_type":
+            event_type,
+
+        "track_id":
+            obj[
+                "track_id"
+            ],
+
+        "class_name":
+            obj[
+                "class_name"
+            ],
+
+        "zone":
+            zone,
+
+        "direction":
+            direction,
+
+        "dwell_time":
+            round(
+                dwell_time,
+                3
+            ),
+
+        "centroid_x":
+            cx,
+
+        "centroid_y":
+            cy
+    }
+
+
+# ==========================================
+# Main Application
+# ==========================================
+
 def main():
 
-    # ==========================================
-    # Initialize modules
-    # ==========================================
+    # --------------------------------------
+    # Core modules
+    # --------------------------------------
 
     video = VideoSource(
         config.VIDEO_SOURCE
     )
 
-    tracker = MultiObjectTracker()
+    tracker = (
+        MultiObjectTracker()
+    )
 
-    trajectories = TrajectoryManager()
+    trajectories = (
+        TrajectoryManager()
+    )
 
-    line_counter = LineCounter()
+    line_counter = (
+        LineCounter()
+    )
 
-    zone_monitor = ZoneMonitor()
+    zone_monitor = (
+        ZoneMonitor()
+    )
 
+
+    # --------------------------------------
+    # Persistence modules
+    # --------------------------------------
+
+    event_logger = (
+        EventLogger()
+    )
+
+    snapshot_manager = (
+        SnapshotManager()
+    )
+
+    video_recorder = (
+        VideoRecorder()
+    )
+
+
+    # --------------------------------------
+    # Open video source
+    # --------------------------------------
 
     video.open()
 
 
-    source_fps = video.get_fps()
+    source_fps = (
+        video.get_fps()
+    )
 
-    live_start_time = time.monotonic()
 
-    previous_time = time.time()
+    live_start_time = (
+        time.monotonic()
+    )
+
+
+    previous_time = (
+        time.time()
+    )
+
 
     frame_index = 0
 
+    recorder_initialized = False
 
-    # ==========================================
-    # Main loop
-    # ==========================================
+
+    # ======================================
+    # Main processing loop
+    # ======================================
 
     while True:
 
-        success, frame = video.read()
+        success, frame = (
+            video.read()
+        )
+
 
         if not success:
             break
@@ -110,14 +228,38 @@ def main():
         frame_index += 1
 
 
-        frame_height = frame.shape[0]
+        frame_height = (
+            frame.shape[0]
+        )
 
-        frame_width = frame.shape[1]
+        frame_width = (
+            frame.shape[1]
+        )
 
 
-        # ======================================
+        # ----------------------------------
+        # Initialize output recorder
+        # ----------------------------------
+
+        if not recorder_initialized:
+
+            video_recorder.open(
+                frame_width=
+                    frame_width,
+
+                frame_height=
+                    frame_height,
+
+                fps=
+                    source_fps
+            )
+
+            recorder_initialized = True
+
+
+        # ----------------------------------
         # Stream timestamp
-        # ======================================
+        # ----------------------------------
 
         timestamp = (
             get_stream_timestamp(
@@ -129,14 +271,15 @@ def main():
         )
 
 
-        # ======================================
-        # Draw polygon zones
-        # ======================================
+        # ----------------------------------
+        # Draw zones
+        # ----------------------------------
 
         for zone_name in config.ZONES:
 
             polygon = (
-                zone_monitor.get_pixel_polygon(
+                zone_monitor
+                .get_pixel_polygon(
                     zone_name,
                     frame_width,
                     frame_height
@@ -145,7 +288,8 @@ def main():
 
 
             zone_counts = (
-                zone_monitor.get_zone_counts(
+                zone_monitor
+                .get_zone_counts(
                     zone_name
                 )
             )
@@ -155,18 +299,20 @@ def main():
                 frame,
                 zone_name,
                 polygon,
-                entries=zone_counts[
-                    "entries"
-                ],
-                exits=zone_counts[
-                    "exits"
-                ]
+                entries=
+                    zone_counts[
+                        "entries"
+                    ],
+                exits=
+                    zone_counts[
+                        "exits"
+                    ]
             )
 
 
-        # ======================================
-        # Multi-object tracking
-        # ======================================
+        # ----------------------------------
+        # MOT
+        # ----------------------------------
 
         objects = tracker.track(
             frame
@@ -176,19 +322,23 @@ def main():
         active_ids = set()
 
 
-        # ======================================
-        # Process tracked objects
-        # ======================================
+        # ==================================
+        # Process each object
+        # ==================================
 
         for obj in objects:
 
-            track_id = obj[
-                "track_id"
-            ]
+            track_id = (
+                obj[
+                    "track_id"
+                ]
+            )
 
-            centroid = obj[
-                "centroid"
-            ]
+            centroid = (
+                obj[
+                    "centroid"
+                ]
+            )
 
 
             active_ids.add(
@@ -196,9 +346,9 @@ def main():
             )
 
 
-            # ----------------------------------
+            # ------------------------------
             # Trajectory
-            # ----------------------------------
+            # ------------------------------
 
             trajectories.update(
                 track_id,
@@ -207,114 +357,80 @@ def main():
 
 
             direction = (
-                trajectories.get_direction(
+                trajectories
+                .get_direction(
                     track_id
                 )
             )
 
 
             points = (
-                trajectories.get_trajectory(
+                trajectories
+                .get_trajectory(
                     track_id
                 )
             )
 
 
-            # ----------------------------------
+            # ------------------------------
             # Line crossing
-            # ----------------------------------
+            # ------------------------------
 
             line_event = (
                 line_counter.update(
-                    track_id=track_id,
-                    centroid=centroid,
-                    frame_index=frame_index,
-                    frame_height=frame_height
+                    track_id=
+                        track_id,
+
+                    centroid=
+                        centroid,
+
+                    frame_index=
+                        frame_index,
+
+                    frame_height=
+                        frame_height
                 )
             )
 
 
-            if line_event is not None:
-
-                print(
-                    f"[LINE EVENT] "
-                    f"ID {track_id} "
-                    f"{line_event}"
-                )
-
-
-            # ----------------------------------
-            # Polygon zone monitoring
-            # ----------------------------------
+            # ------------------------------
+            # Zone monitoring
+            # ------------------------------
 
             (
                 zone_events,
                 zone_status
             ) = zone_monitor.update(
 
-                track_id=track_id,
+                track_id=
+                    track_id,
 
-                centroid=centroid,
+                centroid=
+                    centroid,
 
-                timestamp=timestamp,
+                timestamp=
+                    timestamp,
 
-                frame_index=frame_index,
+                frame_index=
+                    frame_index,
 
-                frame_width=frame_width,
+                frame_width=
+                    frame_width,
 
-                frame_height=frame_height
+                frame_height=
+                    frame_height
             )
 
 
-            # ----------------------------------
-            # Print zone events
-            # ----------------------------------
-
-            for event in zone_events:
-
-                if (
-                    event["type"]
-                    ==
-                    "ZONE_ENTRY"
-                ):
-
-                    print(
-                        f"[ZONE ENTRY] "
-                        f"ID {track_id} "
-                        f"entered "
-                        f"{event['zone']}"
-                    )
-
-
-                elif (
-                    event["type"]
-                    ==
-                    "ZONE_EXIT"
-                ):
-
-                    print(
-                        f"[ZONE EXIT] "
-                        f"ID {track_id} "
-                        f"left "
-                        f"{event['zone']} "
-                        f"after "
-                        f"{event['dwell_time']:.2f}s"
-                    )
-
-
-            # ----------------------------------
-            # Draw trajectory
-            # ----------------------------------
+            # ------------------------------
+            # Draw tracking information
+            # ------------------------------
 
             draw_trajectory(
                 frame,
                 points
             )
 
-
-            # ----------------------------------
-            # Draw tracked object
-            # ----------------------------------
 
             draw_object(
                 frame,
@@ -323,9 +439,9 @@ def main():
             )
 
 
-            # ----------------------------------
-            # Show current zone dwell
-            # ----------------------------------
+            # ------------------------------
+            # Current dwell time
+            # ------------------------------
 
             for (
                 zone_name,
@@ -346,20 +462,75 @@ def main():
                     )
 
 
-            # ----------------------------------
-            # Highlight line crossing event
-            # ----------------------------------
+            # ==============================
+            # LINE EVENT
+            # ==============================
 
             if line_event is not None:
 
-                x1, y1, _, _ = obj[
-                    "bbox"
-                ]
+                event_type = (
+                    f"LINE_{line_event}"
+                )
+
+
+                event = build_event(
+                    event_type=
+                        event_type,
+
+                    obj=
+                        obj,
+
+                    frame_index=
+                        frame_index,
+
+                    timestamp=
+                        timestamp,
+
+                    direction=
+                        direction
+                )
+
+
+                event_logger.log(
+                    event
+                )
+
+
+                snapshot_manager.save(
+                    frame=
+                        frame,
+
+                    event_type=
+                        event_type,
+
+                    track_id=
+                        track_id,
+
+                    frame_index=
+                        frame_index
+                )
+
+
+                print(
+                    f"[{event_type}] "
+                    f"ID {track_id} "
+                    f"{obj['class_name']} "
+                    f"at "
+                    f"{timestamp:.2f}s"
+                )
+
+
+                x1, y1, _, _ = (
+                    obj[
+                        "bbox"
+                    ]
+                )
 
 
                 cv2.putText(
                     frame,
-                    f"CROSSED: {line_event}",
+                    f"CROSSED: "
+                    f"{line_event}",
                     (
                         x1,
                         max(
@@ -374,9 +545,110 @@ def main():
                 )
 
 
-        # ======================================
-        # Cleanup old tracks
-        # ======================================
+            # ==============================
+            # ZONE EVENTS
+            # ==============================
+
+            for zone_event in zone_events:
+
+                event_type = (
+                    zone_event[
+                        "type"
+                    ]
+                )
+
+
+                zone_name = (
+                    zone_event[
+                        "zone"
+                    ]
+                )
+
+
+                dwell_time = (
+                    zone_event[
+                        "dwell_time"
+                    ]
+                )
+
+
+                event = build_event(
+                    event_type=
+                        event_type,
+
+                    obj=
+                        obj,
+
+                    frame_index=
+                        frame_index,
+
+                    timestamp=
+                        timestamp,
+
+                    direction=
+                        direction,
+
+                    zone=
+                        zone_name,
+
+                    dwell_time=
+                        dwell_time
+                )
+
+
+                event_logger.log(
+                    event
+                )
+
+
+                snapshot_manager.save(
+                    frame=
+                        frame,
+
+                    event_type=
+                        event_type,
+
+                    track_id=
+                        track_id,
+
+                    frame_index=
+                        frame_index
+                )
+
+
+                if (
+                    event_type
+                    ==
+                    "ZONE_ENTRY"
+                ):
+
+                    print(
+                        f"[ZONE ENTRY] "
+                        f"ID {track_id} "
+                        f"entered "
+                        f"{zone_name}"
+                    )
+
+
+                elif (
+                    event_type
+                    ==
+                    "ZONE_EXIT"
+                ):
+
+                    print(
+                        f"[ZONE EXIT] "
+                        f"ID {track_id} "
+                        f"left "
+                        f"{zone_name} "
+                        f"after "
+                        f"{dwell_time:.2f}s"
+                    )
+
+
+        # ==================================
+        # Cleanup old track state
+        # ==================================
 
         line_counter.cleanup(
             frame_index
@@ -388,11 +660,13 @@ def main():
         )
 
 
-        # ======================================
+        # ==================================
         # FPS
-        # ======================================
+        # ==================================
 
-        current_time = time.time()
+        current_time = (
+            time.time()
+        )
 
 
         elapsed = (
@@ -409,15 +683,18 @@ def main():
         )
 
 
-        previous_time = current_time
+        previous_time = (
+            current_time
+        )
 
 
-        # ======================================
+        # ==================================
         # Counting line
-        # ======================================
+        # ==================================
 
         line_y = (
-            line_counter.get_line_y(
+            line_counter
+            .get_line_y(
                 frame_height
             )
         )
@@ -429,29 +706,39 @@ def main():
         )
 
 
-        # ======================================
+        # ==================================
         # Statistics
-        # ======================================
+        # ==================================
 
         draw_statistics(
-            frame=frame,
-            active_objects=len(
-                active_ids
-            ),
+            frame=
+                frame,
+
+            active_objects=
+                len(
+                    active_ids
+                ),
+
             total_in=
-                line_counter.total_in,
+                line_counter
+                .total_in,
+
             total_out=
-                line_counter.total_out,
-            fps=fps
+                line_counter
+                .total_out,
+
+            fps=
+                fps
         )
 
 
-        # ======================================
+        # ==================================
         # Event history
-        # ======================================
+        # ==================================
 
         recent_events = (
-            zone_monitor.get_recent_events(
+            zone_monitor
+            .get_recent_events(
                 limit=6
             )
         )
@@ -463,9 +750,18 @@ def main():
         )
 
 
-        # ======================================
+        # ==================================
+        # Record processed frame
+        # ==================================
+
+        video_recorder.write(
+            frame
+        )
+
+
+        # ==================================
         # Display
-        # ======================================
+        # ==================================
 
         cv2.imshow(
             "VisionTrack - MOT Analytics",
@@ -484,11 +780,13 @@ def main():
             break
 
 
-    # ==========================================
+    # ======================================
     # Shutdown
-    # ==========================================
+    # ======================================
 
     video.release()
+
+    video_recorder.release()
 
     cv2.destroyAllWindows()
 

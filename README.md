@@ -13,7 +13,12 @@ VisionTrack is a real-time multi-object detection and tracking system built usin
 * Logging support
 * Object movement analytics
 * Extendable architecture for speed estimation, object counting, and zone monitoring
-
+- Structured event generation
+- CSV event logging
+- Automatic event snapshots
+- Annotated output-video recording
+- Persistent line-crossing events
+- Persistent zone-entry and zone-exit events
 
 ## Tech Stack
 
