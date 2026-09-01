@@ -2,9 +2,7 @@ from pathlib import Path
 
 import cv2
 
-from PySide6.QtCore import (
-    Qt
-)
+from PySide6.QtCore import Qt
 
 from PySide6.QtGui import (
     QImage,
@@ -22,7 +20,8 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QListWidget,
-    QMessageBox
+    QMessageBox,
+    QComboBox
 )
 
 import config
@@ -36,17 +35,14 @@ class MainWindow(QMainWindow):
 
         super().__init__()
 
-
         self.setWindowTitle(
             "VisionTrack - Multi-Object Tracking"
         )
-
 
         self.resize(
             1350,
             820
         )
-
 
         self.selected_source = (
             config.VIDEO_SOURCE
@@ -56,14 +52,13 @@ class MainWindow(QMainWindow):
 
         self.last_frame = None
 
-
         self._build_ui()
 
         self._update_source_label()
 
 
     # ==========================================
-    # UI Construction
+    # Build UI
     # ==========================================
 
     def _build_ui(self):
@@ -73,7 +68,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(
             central_widget
         )
-
 
         root_layout = QVBoxLayout(
             central_widget
@@ -87,25 +81,24 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
 
 
-        # --------------------------------------
-        # Video Section
-        # --------------------------------------
+        # ======================================
+        # Video Display
+        # ======================================
 
         self.video_label = QLabel(
-            "VisionTrack\n\nSelect a source and press Start"
+            "VisionTrack\n\n"
+            "Select source, tracker "
+            "and press Start"
         )
-
 
         self.video_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
 
-
         self.video_label.setMinimumSize(
             850,
             600
         )
-
 
         self.video_label.setStyleSheet(
             """
@@ -118,23 +111,21 @@ class MainWindow(QMainWindow):
             """
         )
 
-
         content_layout.addWidget(
             self.video_label,
             stretch=4
         )
 
 
-        # --------------------------------------
-        # Right Analytics Panel
-        # --------------------------------------
+        # ======================================
+        # Side Panel
+        # ======================================
 
         side_panel = QWidget()
 
         side_panel.setMaximumWidth(
-            340
+            360
         )
-
 
         side_layout = QVBoxLayout(
             side_panel
@@ -142,24 +133,46 @@ class MainWindow(QMainWindow):
 
 
         # ======================================
-        # Statistics
+        # Live Statistics
         # ======================================
 
         stats_group = QGroupBox(
             "Live Statistics"
         )
 
-
         stats_layout = QGridLayout(
             stats_group
         )
 
 
-        self.active_value = QLabel("0")
-        self.in_value = QLabel("0")
-        self.out_value = QLabel("0")
-        self.fps_value = QLabel("0.0")
+        self.active_value = QLabel(
+            "0"
+        )
 
+        self.in_value = QLabel(
+            "0"
+        )
+
+        self.out_value = QLabel(
+            "0"
+        )
+
+        self.fps_value = QLabel(
+            "0.0"
+        )
+
+        self.tracking_value = QLabel(
+            "0.0 ms"
+        )
+
+        self.processing_value = QLabel(
+            "0.0 ms"
+        )
+
+
+        # --------------------------------------
+        # Active Objects
+        # --------------------------------------
 
         stats_layout.addWidget(
             QLabel("Active Objects"),
@@ -174,6 +187,10 @@ class MainWindow(QMainWindow):
         )
 
 
+        # --------------------------------------
+        # IN
+        # --------------------------------------
+
         stats_layout.addWidget(
             QLabel("IN"),
             1,
@@ -186,6 +203,10 @@ class MainWindow(QMainWindow):
             1
         )
 
+
+        # --------------------------------------
+        # OUT
+        # --------------------------------------
 
         stats_layout.addWidget(
             QLabel("OUT"),
@@ -200,6 +221,10 @@ class MainWindow(QMainWindow):
         )
 
 
+        # --------------------------------------
+        # FPS
+        # --------------------------------------
+
         stats_layout.addWidget(
             QLabel("FPS"),
             3,
@@ -213,16 +238,58 @@ class MainWindow(QMainWindow):
         )
 
 
+        # --------------------------------------
+        # Tracking Latency
+        # --------------------------------------
+
+        stats_layout.addWidget(
+            QLabel("Tracking"),
+            4,
+            0
+        )
+
+        stats_layout.addWidget(
+            self.tracking_value,
+            4,
+            1
+        )
+
+
+        # --------------------------------------
+        # Complete Frame Latency
+        # --------------------------------------
+
+        stats_layout.addWidget(
+            QLabel("Frame Latency"),
+            5,
+            0
+        )
+
+        stats_layout.addWidget(
+            self.processing_value,
+            5,
+            1
+        )
+
+
+        # --------------------------------------
+        # Style Statistic Values
+        # --------------------------------------
+
         for label in (
+
             self.active_value,
             self.in_value,
             self.out_value,
-            self.fps_value
+            self.fps_value,
+            self.tracking_value,
+            self.processing_value
+
         ):
 
             label.setStyleSheet(
                 """
-                font-size: 22px;
+                font-size: 20px;
                 font-weight: bold;
                 """
             )
@@ -241,7 +308,6 @@ class MainWindow(QMainWindow):
             "Session"
         )
 
-
         session_layout = QVBoxLayout(
             session_group
         )
@@ -255,6 +321,10 @@ class MainWindow(QMainWindow):
             "Frame: 0"
         )
 
+        self.tracker_label = QLabel(
+            "Tracker: -"
+        )
+
 
         session_layout.addWidget(
             self.session_label
@@ -262,6 +332,10 @@ class MainWindow(QMainWindow):
 
         session_layout.addWidget(
             self.frame_label
+        )
+
+        session_layout.addWidget(
+            self.tracker_label
         )
 
 
@@ -278,19 +352,15 @@ class MainWindow(QMainWindow):
             "Recent Events"
         )
 
-
         events_layout = QVBoxLayout(
             events_group
         )
 
-
         self.event_list = QListWidget()
-
 
         events_layout.addWidget(
             self.event_list
         )
-
 
         side_layout.addWidget(
             events_group,
@@ -311,13 +381,12 @@ class MainWindow(QMainWindow):
 
 
         # ======================================
-        # Source / Controls
+        # Controls
         # ======================================
 
         control_group = QGroupBox(
             "Controls"
         )
-
 
         controls = QHBoxLayout(
             control_group
@@ -337,15 +406,48 @@ class MainWindow(QMainWindow):
         )
 
 
+        # ======================================
+        # Tracker Selector
+        # ======================================
+
+        self.tracker_combo = QComboBox()
+
+        self.tracker_combo.addItem(
+            "ByteTrack",
+            "bytetrack"
+        )
+
+        self.tracker_combo.addItem(
+            "Custom MOT",
+            "custom"
+        )
+
+
+        default_index = (
+            self.tracker_combo.findData(
+                config.TRACKER_MODE
+            )
+        )
+
+
+        if default_index >= 0:
+
+            self.tracker_combo.setCurrentIndex(
+                default_index
+            )
+
+
+        # ======================================
+        # Start / Stop
+        # ======================================
+
         self.start_button = QPushButton(
             "Start"
         )
 
-
         self.stop_button = QPushButton(
             "Stop"
         )
-
 
         self.stop_button.setEnabled(
             False
@@ -357,21 +459,25 @@ class MainWindow(QMainWindow):
             stretch=1
         )
 
-
         controls.addWidget(
             self.webcam_button
         )
-
 
         controls.addWidget(
             self.open_video_button
         )
 
+        controls.addWidget(
+            QLabel("Tracker:")
+        )
+
+        controls.addWidget(
+            self.tracker_combo
+        )
 
         controls.addWidget(
             self.start_button
         )
-
 
         controls.addWidget(
             self.stop_button
@@ -384,23 +490,20 @@ class MainWindow(QMainWindow):
 
 
         # ======================================
-        # Button Connections
+        # Connections
         # ======================================
 
         self.webcam_button.clicked.connect(
             self.select_webcam
         )
 
-
         self.open_video_button.clicked.connect(
             self.select_video
         )
 
-
         self.start_button.clicked.connect(
             self.start_tracking
         )
-
 
         self.stop_button.clicked.connect(
             self.stop_tracking
@@ -413,7 +516,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Source Selection
+    # Webcam Source
     # ==========================================
 
     def select_webcam(self):
@@ -421,11 +524,14 @@ class MainWindow(QMainWindow):
         if self._is_running():
             return
 
-
         self.selected_source = 0
 
         self._update_source_label()
 
+
+    # ==========================================
+    # Video Source
+    # ==========================================
 
     def select_video(self):
 
@@ -433,20 +539,18 @@ class MainWindow(QMainWindow):
             return
 
 
-        file_path, _ = (
-            QFileDialog.getOpenFileName(
+        file_path, _ = QFileDialog.getOpenFileName(
 
-                self,
+            self,
 
-                "Select Video",
+            "Select Video",
 
-                "",
+            "",
 
-                (
-                    "Video Files "
-                    "(*.mp4 *.avi *.mov *.mkv);;"
-                    "All Files (*)"
-                )
+            (
+                "Video Files "
+                "(*.mp4 *.avi *.mov *.mkv);;"
+                "All Files (*)"
             )
         )
 
@@ -459,9 +563,12 @@ class MainWindow(QMainWindow):
             file_path
         )
 
-
         self._update_source_label()
 
+
+    # ==========================================
+    # Source Label
+    # ==========================================
 
     def _update_source_label(self):
 
@@ -482,7 +589,8 @@ class MainWindow(QMainWindow):
             )
 
             text = (
-                f"Source: {path.name}"
+                f"Source: "
+                f"{path.name}"
             )
 
 
@@ -492,7 +600,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Start
+    # Start Tracking
     # ==========================================
 
     def start_tracking(self):
@@ -504,40 +612,52 @@ class MainWindow(QMainWindow):
         self._reset_live_display()
 
 
-        self.worker = VideoWorker(
-            self.selected_source
+        tracker_mode = (
+            self.tracker_combo
+            .currentData()
         )
 
+
+        self.worker = VideoWorker(
+
+            self.selected_source,
+
+            tracker_mode
+        )
+
+
+        # --------------------------------------
+        # Worker Signals
+        # --------------------------------------
 
         self.worker.frame_ready.connect(
             self.update_frame
         )
 
-
         self.worker.stats_updated.connect(
             self.update_stats
         )
-
 
         self.worker.event_detected.connect(
             self.add_event
         )
 
-
         self.worker.status_changed.connect(
             self.update_status
         )
-
 
         self.worker.error_occurred.connect(
             self.show_error
         )
 
-
         self.worker.finished.connect(
             self.worker_finished
         )
 
+
+        # --------------------------------------
+        # Disable Controls
+        # --------------------------------------
 
         self.start_button.setEnabled(
             False
@@ -555,6 +675,10 @@ class MainWindow(QMainWindow):
             False
         )
 
+        self.tracker_combo.setEnabled(
+            False
+        )
+
 
         self.statusBar().showMessage(
             "Starting VisionTrack..."
@@ -565,7 +689,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Stop
+    # Stop Tracking
     # ==========================================
 
     def stop_tracking(self):
@@ -588,7 +712,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Frame Display
+    # Video Frame
     # ==========================================
 
     def update_frame(
@@ -600,7 +724,9 @@ class MainWindow(QMainWindow):
 
 
         rgb_frame = cv2.cvtColor(
+
             frame,
+
             cv2.COLOR_BGR2RGB
         )
 
@@ -611,7 +737,9 @@ class MainWindow(QMainWindow):
 
 
         bytes_per_line = (
-            channels * width
+            channels
+            *
+            width
         )
 
 
@@ -626,6 +754,7 @@ class MainWindow(QMainWindow):
             bytes_per_line,
 
             QImage.Format.Format_RGB888
+
         ).copy()
 
 
@@ -650,7 +779,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Statistics
+    # Live Statistics
     # ==========================================
 
     def update_stats(
@@ -658,54 +787,151 @@ class MainWindow(QMainWindow):
         stats
     ):
 
+        # --------------------------------------
+        # Object Analytics
+        # --------------------------------------
+
         self.active_value.setText(
             str(
-                stats[
-                    "active_objects"
-                ]
+                stats.get(
+                    "active_objects",
+                    0
+                )
             )
         )
 
 
         self.in_value.setText(
             str(
-                stats[
-                    "total_in"
-                ]
+                stats.get(
+                    "total_in",
+                    0
+                )
             )
         )
 
 
         self.out_value.setText(
             str(
-                stats[
-                    "total_out"
-                ]
+                stats.get(
+                    "total_out",
+                    0
+                )
             )
         )
 
+
+        # --------------------------------------
+        # FPS
+        # --------------------------------------
 
         self.fps_value.setText(
-            f"{stats['fps']:.1f}"
+
+            f"{stats.get(
+                'fps',
+                0
+            ):.1f}"
+
         )
 
 
-        session_id = (
-            stats.get(
-                "session_id"
-            )
+        # --------------------------------------
+        # Tracking Time
+        # --------------------------------------
+
+        self.tracking_value.setText(
+
+            f"{stats.get(
+                'tracking_ms',
+                0
+            ):.1f} ms"
+
+        )
+
+
+        # --------------------------------------
+        # Total Frame Latency
+        # --------------------------------------
+
+        self.processing_value.setText(
+
+            f"{stats.get(
+                'processing_ms',
+                0
+            ):.1f} ms"
+
+        )
+
+
+        # --------------------------------------
+        # Session ID
+        # --------------------------------------
+
+        session_id = stats.get(
+            "session_id",
+            "-"
         )
 
 
         self.session_label.setText(
+
             f"Session ID: "
             f"{session_id}"
+
         )
 
 
+        # --------------------------------------
+        # Frame Number
+        # --------------------------------------
+
         self.frame_label.setText(
+
             f"Frame: "
-            f"{stats['frame_index']}"
+            f"{stats.get(
+                'frame_index',
+                0
+            )}"
+
+        )
+
+
+        # --------------------------------------
+        # Tracker
+        # --------------------------------------
+
+        tracker_mode = stats.get(
+            "tracker_mode",
+            "-"
+        )
+
+
+        if tracker_mode == "custom":
+
+            tracker_text = (
+                "Custom MOT"
+            )
+
+        elif tracker_mode == "bytetrack":
+
+            tracker_text = (
+                "ByteTrack"
+            )
+
+        else:
+
+            tracker_text = (
+                str(
+                    tracker_mode
+                )
+            )
+
+
+        self.tracker_label.setText(
+
+            f"Tracker: "
+            f"{tracker_text}"
+
         )
 
 
@@ -723,30 +949,25 @@ class MainWindow(QMainWindow):
             0
         )
 
-
         track_id = event.get(
             "track_id",
             "-"
         )
-
 
         event_type = event.get(
             "event_type",
             ""
         )
 
-
         class_name = event.get(
             "class_name",
             ""
         )
 
-
         zone = event.get(
             "zone",
             ""
         )
-
 
         dwell = event.get(
             "dwell_time",
@@ -755,10 +976,12 @@ class MainWindow(QMainWindow):
 
 
         text = (
+
             f"{timestamp:7.2f}s | "
             f"ID {track_id} | "
             f"{event_type} | "
             f"{class_name}"
+
         )
 
 
@@ -769,14 +992,11 @@ class MainWindow(QMainWindow):
             )
 
 
-        if (
-            event_type
-            ==
-            "ZONE_EXIT"
-        ):
+        if event_type == "ZONE_EXIT":
 
             text += (
-                f" | {dwell:.1f}s"
+                f" | "
+                f"{dwell:.1f}s"
             )
 
 
@@ -786,7 +1006,8 @@ class MainWindow(QMainWindow):
         )
 
 
-        # Limit GUI list size.
+        # Keep latest 100 events
+
         while (
             self.event_list.count()
             >
@@ -794,12 +1015,15 @@ class MainWindow(QMainWindow):
         ):
 
             self.event_list.takeItem(
-                self.event_list.count() - 1
+
+                self.event_list.count()
+                -
+                1
             )
 
 
     # ==========================================
-    # Status / Errors
+    # Status
     # ==========================================
 
     def update_status(
@@ -812,20 +1036,27 @@ class MainWindow(QMainWindow):
         )
 
 
+    # ==========================================
+    # Error
+    # ==========================================
+
     def show_error(
         self,
         message
     ):
 
         QMessageBox.critical(
+
             self,
+
             "VisionTrack Error",
+
             message
         )
 
 
     # ==========================================
-    # Worker Completed
+    # Worker Finished
     # ==========================================
 
     def worker_finished(self):
@@ -846,6 +1077,10 @@ class MainWindow(QMainWindow):
             True
         )
 
+        self.tracker_combo.setEnabled(
+            True
+        )
+
 
         self.statusBar().showMessage(
             "Stopped"
@@ -856,17 +1091,25 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Helpers
+    # Running?
     # ==========================================
 
     def _is_running(self):
 
         return (
+
             self.worker is not None
+
             and
+
             self.worker.isRunning()
+
         )
 
+
+    # ==========================================
+    # Reset Dashboard
+    # ==========================================
 
     def _reset_live_display(self):
 
@@ -886,6 +1129,14 @@ class MainWindow(QMainWindow):
             "0.0"
         )
 
+        self.tracking_value.setText(
+            "0.0 ms"
+        )
+
+        self.processing_value.setText(
+            "0.0 ms"
+        )
+
         self.session_label.setText(
             "Session ID: -"
         )
@@ -894,11 +1145,15 @@ class MainWindow(QMainWindow):
             "Frame: 0"
         )
 
+        self.tracker_label.setText(
+            "Tracker: -"
+        )
+
         self.event_list.clear()
 
 
     # ==========================================
-    # Window Resize
+    # Resize
     # ==========================================
 
     def resizeEvent(
@@ -919,7 +1174,7 @@ class MainWindow(QMainWindow):
 
 
     # ==========================================
-    # Application Close
+    # Close Application
     # ==========================================
 
     def closeEvent(
@@ -931,8 +1186,6 @@ class MainWindow(QMainWindow):
 
             self.worker.stop()
 
-            # Give the worker time to finalize
-            # DB transactions and video writer.
             self.worker.wait(
                 5000
             )

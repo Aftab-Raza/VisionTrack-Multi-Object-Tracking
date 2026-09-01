@@ -11,6 +11,7 @@ from core.tracker import MultiObjectTracker
 from analytics.trajectory import TrajectoryManager
 from analytics.line_counter import LineCounter
 from analytics.zone_monitor import ZoneMonitor
+from analytics.benchmark import BenchmarkManager
 
 from storage.event_logger import EventLogger
 from storage.snapshot_manager import SnapshotManager
@@ -30,37 +31,94 @@ from utils.drawing import (
 
 class VisionTrackEngine:
 
-    def __init__(self, source):
+    def __init__(
+        self,
+        source,
+        tracker_mode=None
+    ):
 
         self.source = source
 
+        # ======================================
         # Core
-        self.video = VideoSource(source)
-        self.tracker = MultiObjectTracker()
+        # ======================================
 
+        self.video = VideoSource(
+            source
+        )
+
+        self.tracker = MultiObjectTracker(
+            mode=tracker_mode
+        )
+
+        self.tracker_mode = (
+            self.tracker.mode
+        )
+
+        # ======================================
+        # Benchmarking
+        # ======================================
+
+        self.benchmark = BenchmarkManager(
+            self.tracker_mode
+        )
+
+        # ======================================
         # Analytics
-        self.trajectories = TrajectoryManager()
-        self.line_counter = LineCounter()
-        self.zone_monitor = ZoneMonitor()
+        # ======================================
 
+        self.trajectories = (
+            TrajectoryManager()
+        )
+
+        self.line_counter = (
+            LineCounter()
+        )
+
+        self.zone_monitor = (
+            ZoneMonitor()
+        )
+
+        # ======================================
         # Persistence
-        self.event_logger = EventLogger()
-        self.snapshot_manager = SnapshotManager()
-        self.video_recorder = VideoRecorder()
-        self.database = DatabaseManager()
+        # ======================================
 
-        # Runtime state
+        self.event_logger = (
+            EventLogger()
+        )
+
+        self.snapshot_manager = (
+            SnapshotManager()
+        )
+
+        self.video_recorder = (
+            VideoRecorder()
+        )
+
+        self.database = (
+            DatabaseManager()
+        )
+
+        # ======================================
+        # Runtime State
+        # ======================================
+
         self.source_fps = None
+
         self.frame_index = 0
+
         self.session_id = None
 
         self.live_start_time = None
+
         self.previous_time = None
 
         self.current_fps = 0.0
 
         self.recorder_initialized = False
+
         self.started = False
+
         self.stopped = False
 
 
@@ -72,11 +130,17 @@ class VisionTrackEngine:
 
         self.video.open()
 
-        self.source_fps = self.video.get_fps()
+        self.source_fps = (
+            self.video.get_fps()
+        )
 
-        self.live_start_time = time.monotonic()
+        self.live_start_time = (
+            time.monotonic()
+        )
 
-        self.previous_time = time.perf_counter()
+        self.previous_time = (
+            time.perf_counter()
+        )
 
         self.started = True
 
@@ -87,8 +151,11 @@ class VisionTrackEngine:
 
     def _get_timestamp(self):
 
-        # Live camera
-        if isinstance(self.source, int):
+        # Webcam / live input
+        if isinstance(
+            self.source,
+            int
+        ):
 
             return (
                 time.monotonic()
@@ -100,7 +167,9 @@ class VisionTrackEngine:
         if (
             self.source_fps is not None
             and
-            math.isfinite(self.source_fps)
+            math.isfinite(
+                self.source_fps
+            )
             and
             self.source_fps > 1
         ):
@@ -120,7 +189,7 @@ class VisionTrackEngine:
 
 
     # ==========================================
-    # Standard Event Structure
+    # Build Standard Event
     # ==========================================
 
     def _build_event(
@@ -133,7 +202,9 @@ class VisionTrackEngine:
         dwell_time=0.0
     ):
 
-        cx, cy = obj["centroid"]
+        cx, cy = obj[
+            "centroid"
+        ]
 
         return {
 
@@ -141,16 +212,23 @@ class VisionTrackEngine:
                 self.frame_index,
 
             "timestamp_seconds":
-                round(timestamp, 3),
+                round(
+                    timestamp,
+                    3
+                ),
 
             "event_type":
                 event_type,
 
             "track_id":
-                obj["track_id"],
+                obj[
+                    "track_id"
+                ],
 
             "class_name":
-                obj["class_name"],
+                obj[
+                    "class_name"
+                ],
 
             "zone":
                 zone,
@@ -159,7 +237,10 @@ class VisionTrackEngine:
                 direction,
 
             "dwell_time":
-                round(dwell_time, 3),
+                round(
+                    dwell_time,
+                    3
+                ),
 
             "centroid_x":
                 cx,
@@ -182,29 +263,46 @@ class VisionTrackEngine:
         snapshot_path = (
             self.snapshot_manager.save(
 
-                frame=frame,
+                frame=
+                    frame,
 
                 event_type=
-                    event["event_type"],
+                    event[
+                        "event_type"
+                    ],
 
                 track_id=
-                    event["track_id"],
+                    event[
+                        "track_id"
+                    ],
 
                 frame_index=
-                    event["frame_index"]
+                    event[
+                        "frame_index"
+                    ]
             )
         )
 
-        event["snapshot_path"] = (
-            snapshot_path
+        event[
+            "snapshot_path"
+        ] = snapshot_path
+
+        # CSV
+        self.event_logger.log(
+            event
         )
 
-        self.event_logger.log(event)
-
+        # SQLite
         self.database.log_event(
-            session_id=self.session_id,
-            event=event,
-            snapshot_path=snapshot_path
+
+            session_id=
+                self.session_id,
+
+            event=
+                event,
+
+            snapshot_path=
+                snapshot_path
         )
 
 
@@ -232,11 +330,12 @@ class VisionTrackEngine:
             return
 
         instant_fps = (
-            1.0 / elapsed
+            1.0
+            /
+            elapsed
         )
 
-        # Smooth FPS instead of showing
-        # highly unstable per-frame values.
+        # Smooth the displayed FPS
         if self.current_fps == 0:
 
             self.current_fps = (
@@ -246,10 +345,13 @@ class VisionTrackEngine:
         else:
 
             self.current_fps = (
+
                 0.90
                 *
                 self.current_fps
+
                 +
+
                 0.10
                 *
                 instant_fps
@@ -257,7 +359,7 @@ class VisionTrackEngine:
 
 
     # ==========================================
-    # Process One Frame
+    # Process Next Frame
     # ==========================================
 
     def process_next_frame(self):
@@ -269,27 +371,37 @@ class VisionTrackEngine:
                 "has not been started."
             )
 
+        # ======================================
+        # START COMPLETE FRAME TIMER
+        # ======================================
+
+        frame_start_time = (
+            time.perf_counter()
+        )
+
+        # ======================================
+        # Read Frame
+        # ======================================
 
         success, frame = (
             self.video.read()
         )
 
-
         if not success:
-
             return None
-
 
         self.frame_index += 1
 
+        frame_height = (
+            frame.shape[0]
+        )
 
-        frame_height = frame.shape[0]
-
-        frame_width = frame.shape[1]
-
+        frame_width = (
+            frame.shape[1]
+        )
 
         # ======================================
-        # Create DB session on first frame
+        # Start Database Session
         # ======================================
 
         if self.session_id is None:
@@ -311,9 +423,8 @@ class VisionTrackEngine:
                 )
             )
 
-
         # ======================================
-        # Initialize video recorder
+        # Initialize Recorder
         # ======================================
 
         if not self.recorder_initialized:
@@ -334,14 +445,16 @@ class VisionTrackEngine:
                 True
             )
 
+        # ======================================
+        # Timestamp
+        # ======================================
 
         timestamp = (
             self._get_timestamp()
         )
 
-
         # ======================================
-        # Draw configured zones
+        # Draw Zones
         # ======================================
 
         for zone_name in config.ZONES:
@@ -351,11 +464,12 @@ class VisionTrackEngine:
                 .get_pixel_polygon(
 
                     zone_name,
+
                     frame_width,
+
                     frame_height
                 )
             )
-
 
             counts = (
                 self.zone_monitor
@@ -364,23 +478,35 @@ class VisionTrackEngine:
                 )
             )
 
-
             draw_zone(
 
                 frame,
+
                 zone_name,
+
                 polygon,
 
                 entries=
-                    counts["entries"],
+                    counts[
+                        "entries"
+                    ],
 
                 exits=
-                    counts["exits"]
+                    counts[
+                        "exits"
+                    ]
             )
 
+        # ======================================
+        # START TRACKING TIMER
+        # ======================================
+
+        tracking_start_time = (
+            time.perf_counter()
+        )
 
         # ======================================
-        # Multi-object tracking
+        # Multi Object Tracking
         # ======================================
 
         objects = (
@@ -389,35 +515,51 @@ class VisionTrackEngine:
             )
         )
 
+        # ======================================
+        # STOP TRACKING TIMER
+        # ======================================
+
+        tracking_end_time = (
+            time.perf_counter()
+        )
+
+        tracking_ms = (
+
+            tracking_end_time
+            -
+            tracking_start_time
+
+        ) * 1000.0
 
         active_ids = set()
 
         frame_events = []
 
-
         # ======================================
-        # Process Objects
+        # Process Every Tracked Object
         # ======================================
 
         for obj in objects:
 
             track_id = (
-                obj["track_id"]
+                obj[
+                    "track_id"
+                ]
             )
 
             centroid = (
-                obj["centroid"]
+                obj[
+                    "centroid"
+                ]
             )
-
 
             active_ids.add(
                 track_id
             )
 
-
-            # ----------------------------------
-            # Track persistence
-            # ----------------------------------
+            # ==================================
+            # Track Persistence
+            # ==================================
 
             self.database.upsert_track(
 
@@ -434,16 +576,14 @@ class VisionTrackEngine:
                     timestamp
             )
 
-
-            # ----------------------------------
+            # ==================================
             # Trajectory
-            # ----------------------------------
+            # ==================================
 
             self.trajectories.update(
                 track_id,
                 centroid
             )
-
 
             direction = (
                 self.trajectories
@@ -452,7 +592,6 @@ class VisionTrackEngine:
                 )
             )
 
-
             points = (
                 self.trajectories
                 .get_trajectory(
@@ -460,10 +599,9 @@ class VisionTrackEngine:
                 )
             )
 
-
-            # ----------------------------------
-            # Counting Line
-            # ----------------------------------
+            # ==================================
+            # Line Crossing
+            # ==================================
 
             line_event = (
                 self.line_counter.update(
@@ -482,14 +620,14 @@ class VisionTrackEngine:
                 )
             )
 
-
-            # ----------------------------------
+            # ==================================
             # Zone Analytics
-            # ----------------------------------
+            # ==================================
 
             (
                 zone_events,
                 zone_status
+
             ) = self.zone_monitor.update(
 
                 track_id=
@@ -511,16 +649,18 @@ class VisionTrackEngine:
                     frame_height
             )
 
-
-            # ----------------------------------
-            # Draw tracking
-            # ----------------------------------
+            # ==================================
+            # Draw Trajectory
+            # ==================================
 
             draw_trajectory(
                 frame,
                 points
             )
 
+            # ==================================
+            # Draw Object
+            # ==================================
 
             draw_object(
                 frame,
@@ -528,29 +668,31 @@ class VisionTrackEngine:
                 direction
             )
 
-
-            # ----------------------------------
-            # Draw dwell time
-            # ----------------------------------
+            # ==================================
+            # Draw Zone Dwell Status
+            # ==================================
 
             for (
                 zone_name,
                 status
             ) in zone_status.items():
 
-                if status["inside"]:
+                if status[
+                    "inside"
+                ]:
 
                     draw_zone_status(
 
                         frame,
+
                         centroid,
+
                         zone_name,
 
                         status[
                             "dwell_time"
                         ]
                     )
-
 
             # ==================================
             # Line Event
@@ -575,22 +717,20 @@ class VisionTrackEngine:
                     )
                 )
 
-
                 self._persist_event(
                     event,
                     frame
                 )
 
-
                 frame_events.append(
                     event
                 )
 
-
                 x1, y1, _, _ = (
-                    obj["bbox"]
+                    obj[
+                        "bbox"
+                    ]
                 )
-
 
                 cv2.putText(
 
@@ -601,6 +741,7 @@ class VisionTrackEngine:
 
                     (
                         x1,
+
                         max(
                             40,
                             y1 - 35
@@ -611,23 +752,30 @@ class VisionTrackEngine:
 
                     0.7,
 
-                    (0, 0, 255),
+                    (
+                        0,
+                        0,
+                        255
+                    ),
 
                     2
                 )
-
 
             # ==================================
             # Zone Events
             # ==================================
 
-            for zone_event in zone_events:
+            for zone_event in (
+                zone_events
+            ):
 
                 event = (
                     self._build_event(
 
                         event_type=
-                            zone_event["type"],
+                            zone_event[
+                                "type"
+                            ],
 
                         obj=
                             obj,
@@ -639,7 +787,9 @@ class VisionTrackEngine:
                             direction,
 
                         zone=
-                            zone_event["zone"],
+                            zone_event[
+                                "zone"
+                            ],
 
                         dwell_time=
                             zone_event[
@@ -648,34 +798,29 @@ class VisionTrackEngine:
                     )
                 )
 
-
                 self._persist_event(
                     event,
                     frame
                 )
 
-
                 frame_events.append(
                     event
                 )
 
-
         # ======================================
-        # Cleanup old state
+        # Cleanup Old Analytics State
         # ======================================
 
         self.line_counter.cleanup(
             self.frame_index
         )
 
-
         self.zone_monitor.cleanup(
             self.frame_index
         )
 
-
         # ======================================
-        # Periodic DB commit
+        # Periodic Database Commit
         # ======================================
 
         if (
@@ -688,13 +833,11 @@ class VisionTrackEngine:
 
             self.database.commit()
 
-
         # ======================================
-        # Performance
+        # FPS
         # ======================================
 
         self._update_fps()
-
 
         # ======================================
         # Counting Line
@@ -707,12 +850,10 @@ class VisionTrackEngine:
             )
         )
 
-
         draw_counting_line(
             frame,
             line_y
         )
-
 
         # ======================================
         # Statistics Overlay
@@ -724,7 +865,9 @@ class VisionTrackEngine:
                 frame,
 
             active_objects=
-                len(active_ids),
+                len(
+                    active_ids
+                ),
 
             total_in=
                 self.line_counter
@@ -738,9 +881,8 @@ class VisionTrackEngine:
                 self.current_fps
         )
 
-
         # ======================================
-        # Existing zone event overlay
+        # Recent Zone Event Overlay
         # ======================================
 
         recent_events = (
@@ -750,36 +892,84 @@ class VisionTrackEngine:
             )
         )
 
-
         draw_event_history(
             frame,
             recent_events
         )
 
-
         # ======================================
-        # Save annotated video
+        # Save Annotated Video
         # ======================================
 
         self.video_recorder.write(
             frame
         )
 
+        # ======================================
+        # STOP COMPLETE FRAME TIMER
+        # ======================================
+
+        frame_end_time = (
+            time.perf_counter()
+        )
+
+        total_processing_ms = (
+
+            frame_end_time
+            -
+            frame_start_time
+
+        ) * 1000.0
 
         # ======================================
-        # Data for GUI
+        # Benchmark Frame
+        # ======================================
+
+        self.benchmark.record_frame(
+
+            frame_index=
+                self.frame_index,
+
+            tracking_ms=
+                tracking_ms,
+
+            total_processing_ms=
+                total_processing_ms,
+
+            fps=
+                self.current_fps,
+
+            objects=
+                objects
+        )
+
+        # ======================================
+        # GUI Statistics
         # ======================================
 
         stats = {
 
+            "tracker_mode":
+                self.tracker_mode,
+
+            "tracking_ms":
+                tracking_ms,
+
+            "processing_ms":
+                total_processing_ms,
+
             "active_objects":
-                len(active_ids),
+                len(
+                    active_ids
+                ),
 
             "total_in":
-                self.line_counter.total_in,
+                self.line_counter
+                .total_in,
 
             "total_out":
-                self.line_counter.total_out,
+                self.line_counter
+                .total_out,
 
             "fps":
                 self.current_fps,
@@ -791,7 +981,6 @@ class VisionTrackEngine:
                 self.session_id
         }
 
-
         return (
             frame,
             stats,
@@ -800,7 +989,7 @@ class VisionTrackEngine:
 
 
     # ==========================================
-    # Stop
+    # Stop Engine
     # ==========================================
 
     def stop(self):
@@ -810,11 +999,97 @@ class VisionTrackEngine:
 
         self.stopped = True
 
-
         try:
 
-            self.database.commit()
+            # ==================================
+            # Save Benchmark
+            # ==================================
 
+            benchmark_summary = (
+                self.benchmark.save()
+            )
+
+            if benchmark_summary:
+
+                print(
+                    "\n"
+                    "=============================="
+                )
+
+                print(
+                    "VISIONTRACK BENCHMARK"
+                )
+
+                print(
+                    "=============================="
+                )
+
+                print(
+
+                    f"Tracker: "
+                    f"{benchmark_summary['tracker_mode']}"
+
+                )
+
+                print(
+
+                    f"Frames: "
+                    f"{benchmark_summary['total_frames']}"
+
+                )
+
+                print(
+
+                    f"Average FPS: "
+                    f"{benchmark_summary['average_fps']}"
+
+                )
+
+                print(
+
+                    f"Tracking Time: "
+                    f"{benchmark_summary['average_tracking_ms']} ms"
+
+                )
+
+                print(
+
+                    f"Processing Time: "
+                    f"{benchmark_summary['average_processing_ms']} ms"
+
+                )
+
+                print(
+
+                    f"P95 Processing: "
+                    f"{benchmark_summary['p95_processing_ms']} ms"
+
+                )
+
+                print(
+
+                    f"Unique Track IDs: "
+                    f"{benchmark_summary['unique_track_ids']}"
+
+                )
+
+                print(
+
+                    f"Average Active Objects: "
+                    f"{benchmark_summary['average_active_objects']}"
+
+                )
+
+                print(
+                    "=============================="
+                    "\n"
+                )
+
+            # ==================================
+            # Database
+            # ==================================
+
+            self.database.commit()
 
             if self.session_id is not None:
 

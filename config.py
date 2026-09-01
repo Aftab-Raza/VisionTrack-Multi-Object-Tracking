@@ -116,3 +116,53 @@ DATABASE_PATH = "data/visiontrack.db"
 # Writing every frame directly to disk can
 # reduce FPS. Commit updates periodically.
 DB_COMMIT_INTERVAL_FRAMES = 30
+
+
+# ==========================================
+# Tracker Backend Configuration
+# ==========================================
+
+# Available:
+# "bytetrack"
+# "custom"
+
+TRACKER_MODE = "bytetrack"
+
+
+# ==========================================
+# Custom MOT Configuration
+# ==========================================
+
+# Minimum IoU required to associate an
+# existing track with a new detection.
+CUSTOM_IOU_THRESHOLD = 0.25
+
+
+# A new track must be detected this many
+# times before it becomes confirmed.
+CUSTOM_MIN_HITS = 3
+
+
+# Number of consecutive unmatched frames
+# allowed before removing a track.
+CUSTOM_MAX_MISSED = 20
+
+
+TRACKER_MODE = "bytetrack"
+
+CUSTOM_IOU_THRESHOLD = 0.25
+
+CUSTOM_MIN_HITS = 3
+
+CUSTOM_MAX_MISSED = 20
+
+# ==========================================
+# Benchmark Configuration
+# ==========================================
+
+ENABLE_BENCHMARKING = True
+
+BENCHMARK_DIRECTORY = "outputs/benchmarks"
+
+# Store frame-level measurements.
+SAVE_FRAME_BENCHMARKS = True

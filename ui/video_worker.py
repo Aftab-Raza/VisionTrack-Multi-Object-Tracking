@@ -3,25 +3,42 @@ from PySide6.QtCore import (
     Signal
 )
 
-from core.engine import VisionTrackEngine
+from core.engine import (
+    VisionTrackEngine
+)
 
 
 class VideoWorker(QThread):
 
-    frame_ready = Signal(object)
+    # ==========================================
+    # Signals
+    # ==========================================
 
-    stats_updated = Signal(dict)
+    frame_ready = Signal(
+        object
+    )
 
-    event_detected = Signal(dict)
+    stats_updated = Signal(
+        dict
+    )
 
-    status_changed = Signal(str)
+    event_detected = Signal(
+        dict
+    )
 
-    error_occurred = Signal(str)
+    status_changed = Signal(
+        str
+    )
+
+    error_occurred = Signal(
+        str
+    )
 
 
     def __init__(
         self,
         source,
+        tracker_mode,
         parent=None
     ):
 
@@ -31,7 +48,13 @@ class VideoWorker(QThread):
 
         self.source = source
 
-        self._stop_requested = False
+        self.tracker_mode = (
+            tracker_mode
+        )
+
+        self._stop_requested = (
+            False
+        )
 
 
     # ==========================================
@@ -45,34 +68,50 @@ class VideoWorker(QThread):
         try:
 
             self.status_changed.emit(
-                "Loading detection model..."
+                "Loading tracking system..."
             )
 
-
-            # IMPORTANT:
-            # Engine is created inside this
-            # worker thread.
+            # ==================================
+            # Engine created inside worker thread
+            # ==================================
             #
-            # This also ensures that the SQLite
-            # connection belongs to this thread.
+            # Important because SQLite connection
+            # should belong to this thread.
+            #
 
             engine = VisionTrackEngine(
-                self.source
-            )
 
+                self.source,
+
+                tracker_mode=
+                    self.tracker_mode
+            )
 
             self.status_changed.emit(
                 "Opening video source..."
             )
 
-
             engine.start()
 
+            if (
+                self.tracker_mode
+                ==
+                "custom"
+            ):
 
-            self.status_changed.emit(
-                "Tracking"
-            )
+                self.status_changed.emit(
+                    "Tracking - Custom MOT"
+                )
 
+            else:
+
+                self.status_changed.emit(
+                    "Tracking - ByteTrack"
+                )
+
+            # ==================================
+            # Main Worker Loop
+            # ==================================
 
             while not self._stop_requested:
 
@@ -81,8 +120,10 @@ class VideoWorker(QThread):
                     .process_next_frame()
                 )
 
-
+                # --------------------------------
                 # End of recorded video
+                # --------------------------------
+
                 if result is None:
 
                     self.status_changed.emit(
@@ -91,30 +132,37 @@ class VideoWorker(QThread):
 
                     break
 
-
                 (
                     frame,
                     stats,
                     events
                 ) = result
 
+                # --------------------------------
+                # Send frame to GUI
+                # --------------------------------
 
                 self.frame_ready.emit(
                     frame
                 )
 
+                # --------------------------------
+                # Send statistics
+                # --------------------------------
 
                 self.stats_updated.emit(
                     stats
                 )
 
+                # --------------------------------
+                # Send events
+                # --------------------------------
 
                 for event in events:
 
                     self.event_detected.emit(
                         event
                     )
-
 
         except Exception as error:
 
@@ -124,13 +172,11 @@ class VideoWorker(QThread):
                 f"{error}"
             )
 
-
         finally:
 
             if engine is not None:
 
                 engine.stop()
-
 
             self.status_changed.emit(
                 "Stopped"
@@ -138,7 +184,7 @@ class VideoWorker(QThread):
 
 
     # ==========================================
-    # Request Stop
+    # Stop Request
     # ==========================================
 
     def stop(self):

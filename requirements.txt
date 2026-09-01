@@ -1,4 +1,5 @@
 ultralytics
 opencv-python
 numpy
+scipy
 PySide6
